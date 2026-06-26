@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Fynder Browser</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #f7f4ef; color: #111010; font-family: system-ui, sans-serif; padding: 20px; }
+  .chrome { background: #fff; padding: 15px; border: 3px solid #111010; box-shadow: 4px 4px 0 #111010; border-radius: 12px; display: flex; gap: 10px; margin-bottom: 20px; }
+  .url-bar { flex: 1; padding: 8px; border: 3px solid #111010; border-radius: 8px; font-weight: bold; }
+  .go-btn, .action-btn { background: #111010; color: #f7f4ef; border: none; padding: 8px 20px; font-weight: bold; border-radius: 8px; cursor: pointer; }
+  .card { background: #fff; border: 3px solid #111010; box-shadow: 5px 5px 0 #111010; padding: 25px; border-radius: 14px; max-width: 500px; margin: 0 auto; width: 100%; }
+  input { width: 100%; padding: 10px; margin: 8px 0; border: 3px solid #111010; border-radius: 8px; }
+  .toggle-btn { background: #3b82f6; color: white; border: 3px solid #111010; box-shadow: 3px 3px 0 #111010; width: 100%; padding: 10px; font-weight: bold; border-radius: 8px; margin-top: 8px; cursor: pointer; }
+  #home-view { width: 100%; display: flex; flex-direction: column; gap: 1.5rem; }
+  #view-pane { width: 100%; display: none; background: white; border: 3px solid #111010; border-radius: 12px; padding: 20px; }
+  .logo-text { font-weight: 900; font-size: 4.5rem; letter-spacing: -0.04em; text-align: center; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+  <!-- BROWSER CHROME NAVIGATION BAR -->
+  <div class="chrome">
+    <button class="action-btn" id="homeBtn">⌂</button>
+    <input type="text" class="url-bar" value="fynd://home.swi">
+    <button class="go-btn" id="goBtn">Go</button>
+  </div>
+
+  <!-- FIXED LANDING VIEW CONTAINER (KEEPS CARDS CONFINED TO HOMEPAGE) -->
+  <div id="home-view">
+      <h1 class="logo-text">Fynder</h1>
+
+      <!-- UNIFIED MASTER SECURITY ACCOUNT PORTAL -->
+      <div id="auth-gate-card" class="card">
+        <h2 id="gate-title">🔐 Establish Global SWI Identity</h2>
+        <p id="gate-desc" style="font-size: 0.85rem; color: #6b7280; margin: 5px 0 15px 0;">Creates your secure network credentials used universally across FMail, ViewNet, and ChatHub nodes.</p>
+        
+        <input type="text" id="userIn" placeholder="Enter custom moniker name...">
+        <input type="password" id="passIn" placeholder="Enter secure key password...">
+        
+        <button id="submitBtn" class="action-btn" style="width:100%; margin-top:10px; padding:12px;">Generate Global Account Node</button>
+        <button id="toggleBtn" class="toggle-btn">Already verified? Switch to Secure Login Mode →</button>
+      </div>
+
+      <!-- AUTHENTICATED CONTROL PANEL DASHBOARD -->
+      <div id="dash-pane" class="card" style="display:none; border-left: 6px solid #10b981;">
+        <h3 style="color:#10b981;">✓ Network Connection Active</h3>
+        <p style="margin-top: 8px; font-size: 1.1rem;">Logged in universally as: <b id="userLabel" style="color:#3b82f6;">@guest</b></p>
+        <p style="font-size: 0.85rem; color:#6b7280; font-family:monospace; margin-top:4px;">Assigned Identity: <span id="mailLabel">guest@fmail.swi</span></p>
+        <button id="logoutBtn" class="action-btn" style="background:red; margin-top:15px; padding:6px 12px;">Logout Session</button>
+        <br><br>
+        <button id="taxiBtn" class="action-btn" style="background:gold; color:black; width:100%;">🚖 Launch SWI Taxi Directory</button>
+      </div>
+  </div>
+
+  <!-- INTERACTIVE FRAME VIEWPORT CONTAINER -->
+  <div id="view-pane"></div>
+
+  <script>
+    if (typeof require !== 'undefined') {
+      const { ipcRenderer } = require('electron');
+      
+      const userIn = document.getElementById('userIn');
+      const passIn = document.getElementById('passIn');
+      const submitBtn = document.getElementById('submitBtn');
+      const toggleBtn = document.getElementById('toggleBtn');
+      const gateTitle = document.getElementById('gate-title');
+      const gateDesc = document.getElementById('gate-desc');
+      const authGate = document.getElementById('auth-gate-card');
+      const dashPane = document.getElementById('dash-pane');
+      const userLabel = document.getElementById('userLabel');
+      const mailLabel = document.getElementById('mailLabel');
+      const logoutBtn = document.getElementById('logoutBtn');
+      const taxiBtn = document.getElementById('taxiBtn');
+      
+      const homeView = document.getElementById('home-view');
+      const urlBar = document.querySelector('.url-bar');
+      const goBtn = document.getElementById('goBtn');
+      const homeBtn = document.getElementById('homeBtn');
+      const viewPane = document.getElementById('view-pane');
+
+      let mode = "REGISTER";
+
+      toggleBtn.onclick = function() {
+        if (mode === "REGISTER") {
+          mode = "LOGIN";
+          gateTitle.innerText = "🔑 Verified User Account Login";
+          gateDesc.innerText = "Authenticate your master credentials to claim your session.";
+          submitBtn.innerText = "Verify Node Passkey & Login";
+          toggleBtn.innerText = "Need a global identity account? Create one here →";
+        } else {
+          mode = "REGISTER";
+          gateTitle.innerText = "🔐 Establish Global SWI Identity";
+          gateDesc.innerText = "Creates your secure network credentials used universally.";
+          submitBtn.innerText = "Generate Global Account Node";
+          toggleBtn.innerText = "Already verified? Switch to Secure Login Mode →";
+        }
+      };
+
+      function startSession(user) {
+        window.activeSWISessionUsername = user;
+        userLabel.innerText = "@" + user;
+        mailLabel.innerText = user + "@fmail.swi";
+        authGate.style.display = "none";
+        dashPane.style.display = "block";
+      }
+
+      submitBtn.onclick = async function() {
+        const u = userIn.value.trim().toLowerCase();
+        const p = passIn.value.trim();
+        if(!u || !p) return alert("Fill out credentials!");
+
+        const endpoint = (mode === "REGISTER") ? 'CREATE_SECURE_ACCOUNT:' : 'VERIFY_SECURE_LOGIN:';
+        const result = await ipcRenderer.invoke('custom-protocol', endpoint + JSON.stringify({user:u, pass:p}));
+        
+        if (result.success) {
+          alert("🎉 Access Granted!");
+          startSession(result.username);
+        } else {
+          alert("Auth Error: " + result.error);
+        }
+      };
+
+      logoutBtn.onclick = function() {
+        window.activeSWISessionUsername = "";
+        userIn.value = ""; passIn.value = "";
+        authGate.style.display = "block";
+        dashPane.style.display = "none";
+        viewPane.style.display = "none";
+        homeView.style.display = "flex";
+        urlBar.value = "fynd://home.swi";
+      };
+
+      async function loadUrl(target) {
+        let clean = target.replace('fynd://', '').trim();
+        if(!clean) return;
+        urlBar.value = "fynd://" + clean;
+        if(!clean.endsWith('.swi')) clean = "search:" + clean;
+
+        const data = await ipcRenderer.invoke('custom-protocol', clean);
+        
+        // Hide the entire homepage view area completely including the embedded cards!
+        homeView.style.display = "none";
+        viewPane.style.display = "block";
+        viewPane.innerHTML = data.body;
+
+        const scripts = viewPane.querySelectorAll('script');
+        scripts.forEach(s => {
+          const t = document.createElement('script');
+          t.text = s.text;
+          document.body.appendChild(t).parentNode.removeChild(t);
+        });
+      }
+
+      window.loadUrl = loadUrl;
+      window.loadCustomDomain = loadUrl;
+
+      goBtn.onclick = () => loadUrl(urlBar.value);
+      urlBar.onkeypress = (e) => { if(e.key === 'Enter') loadUrl(urlBar.value); };
+      taxiBtn.onclick = () => loadUrl('fynd://directory.swi');
+      
+      homeBtn.onclick = function() {
+        viewPane.style.display = "none";
+        homeView.style.display = "flex";
+        urlBar.value = "fynd://home.swi";
+        if(window.activeSWISessionUsername) { authGate.style.display = "none"; dashPane.style.display = "block"; } else { authGate.style.display = "block"; dashPane.style.display = "none"; }
+      };
+
+      if(window.activeSWISessionUsername) { startSession(window.activeSWISessionUsername); }
+    }
+  </script>
+</body>
+</html>
+
